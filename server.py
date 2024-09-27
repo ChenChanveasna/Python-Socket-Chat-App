@@ -26,7 +26,7 @@ def handle_client(conn, addr):
         print(f"\r\033[1m[{get_current_time()}] [NEW CONNECTION]\033[0m {addr} with username: \033[1m{username}\033[0m connected.\n\033[1;36m[Server Message]:\033[0m ", end="", flush=True)
         
         with clients_lock:
-            clients[conn] = username
+            clients[username] = conn
         
         # Notify others that a new user has joined
         join_message = f"\033[3m{username} joined the room\033[0m"  # Italicized join message
@@ -43,6 +43,22 @@ def handle_client(conn, addr):
                 disconnect_message = f"\033[3m{username} has left the chat.\033[0m"
                 print(disconnect_message)
                 broadcast_message(disconnect_message, conn)
+            elif msg.startswith('@'):
+                # Extract the target username
+                target_usr_name = msg.split('@')[1].split()[0]
+                # Check if the target username exists in the clients
+                with clients_lock:
+                    if target_usr_name in clients:
+                        private_msg = f'\033[1;33m[PRIVATE] {username}: {msg}\033[0m'
+                        target_conn = clients[target_usr_name]  # Get the target connection object
+                        try:
+                            target_conn.send(private_msg.encode(FORMAT))  # Send private message
+                            print(f'\r\033[1;33m[PRIVATE] {username} to {target_usr_name}: {msg} \033[0m\n\033[1;36m[Server Message]:\033[0m', end='', flush=True)
+                        except Exception as e:
+                            print(f"\033[1;31m[ERROR] Could not send private message: {e}\033[0m")
+                    else:
+                        error_msg = f'\033[1;31mUser @{target_usr_name} not found!\033[0m'.encode(FORMAT)
+                        conn.send(error_msg)
             else:
             # Display client message
                 formatted_message = f"[{get_current_time()}] {username}: {msg}             "
@@ -57,12 +73,12 @@ def handle_client(conn, addr):
 def broadcast_message(message, sender_conn=None):
     """Broadcasts a message to all connected clients except the sender."""
     with clients_lock:
-        for c in clients:
-            if c != sender_conn:  # Avoid sending the message back to the sender
+        for c_username, c_conn in clients.items():
+            if c_conn != sender_conn:  # Avoid sending the message back to the sender
                 try:
-                    c.sendall(message.encode(FORMAT))
+                    c_conn.sendall(message.encode(FORMAT))
                 except Exception as e:
-                    print(f"[ERROR] Failed to send message to {clients[c]}: {e}")
+                    print(f"\033[1;31m[ERROR] Failed to send message to {c_username}: {e}\033[0m")
 
 def server_input():
     while True:
